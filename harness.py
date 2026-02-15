@@ -8,7 +8,7 @@ ENGINE_PATH = os.path.join(_dirname, 'synthDrivers\\eloquence')
 with open(os.path.join(ENGINE_PATH, 'ECI.INI.orig'), 'r') as f:
     ini_orig = f.read()
 with open(os.path.join(ENGINE_PATH, 'ECI.INI'), 'w') as f:
-    f.write(ini_orig.replace('C:\\Users\\tyler\\AppData\\Roaming\\nvda\\addons\\Eloquence\\synthDrivers\\eloquence', ENGINE_PATH))
+    f.write(ini_orig.replace('ENGINE_PATH', ENGINE_PATH))
 lib = ffi.dlopen(os.path.join(ENGINE_PATH, 'ECI.DLL'))
 
 from enum import IntFlag
