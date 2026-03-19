@@ -99,7 +99,7 @@
 extern "C" {
 #endif
 
-typedef void* ECIHand;
+typedef struct _ECI* ECIHand;
 
 typedef const void* ECIInputText;
 

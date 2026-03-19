@@ -1,5 +1,7 @@
 import os
 from ._eci_cffi import ffi
+if TYPE_CHECKING:
+	from ._eci_cffi import types
 
 _dirname = os.path.dirname(__file__)
 ENGINE_PATH = os.path.join(_dirname, r'..\synthDrivers\eloquence')
@@ -43,23 +45,23 @@ def version():
 	return ffi.string(version)
 
 def availableLanguages():
-	langs_num = ffi.new('int*')
+	langs_num = ffi.new('int *')
 	assert not (ret := lib.eciGetAvailableLanguages(ffi.NULL, langs_num)), f'eciGetAvailableLanguages failed: {ret:#x}'
 	langs = ffi.new('enum ECILanguageDialect[]', langs_num[0])
 	assert not (ret := lib.eciGetAvailableLanguages(langs, langs_num)) and langs_num[0] == len(langs), f'eciGetAvailableLanguages failed: {ret:#x}'
 	return [ ffi.cast("enum ECILanguageDialect", x) for x in langs ]
 
 class ECI:
-	def __init__(self, langDialect) -> None:
+	def __init__(self, langDialect: 'types.enum_ECILanguageDialect') -> None:
 		self.eci = lib.eciNewEx(langDialect)
 		assert self.eci, f'failed creating engine'
 		self.err_msg_buf = ffi.new('char[]', 100)
 
 	def __del__(self):
 		lib.eciDelete(self.eci)
-		self.eci = None
+		del self.eci
 
-	def check_err(self, b: bool):
+	def check_err(self, b: int):
 		if b: return
 		bits = ErrorCode(lib.eciProgStatus(self.eci))
 		lib.eciErrorMessage(self.eci, self.err_msg_buf)
