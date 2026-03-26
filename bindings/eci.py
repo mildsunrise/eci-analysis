@@ -1,7 +1,8 @@
 import os
 from ._eci_cffi import ffi
+from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
-	from ._eci_cffi import types
+	from ._eci_cffi import types, Array
 
 _dirname = os.path.dirname(__file__)
 ENGINE_PATH = os.path.join(_dirname, r'..\synthDrivers\eloquence')
@@ -56,6 +57,7 @@ class ECI:
 		self.eci = lib.eciNewEx(langDialect)
 		assert self.eci, f'failed creating engine'
 		self.err_msg_buf = ffi.new('char[]', 100)
+		self.audio_buf = None
 
 	def __del__(self):
 		lib.eciDelete(self.eci)
@@ -69,8 +71,9 @@ class ECI:
 		lib.eciClearErrors(self.eci)
 		raise AssertionError(f'failed {bits} {msg!r}')
 
-	def setOutputBuffer(self, buf):
-		self.check_err(lib.eciSetOutputBuffer(self.eci, len(buf), buf))
+	def setOutputBuffer(self, buf: Optional['Array[types.short]']):
+		self.check_err(lib.eciSetOutputBuffer(self.eci, len(buf) if buf else 0, buf or ffi.NULL))
+		self.audio_buf = buf
 
 	def addText(self, text: str):
 		self.check_err(lib.eciAddText(self.eci, text.encode('mbcs')))

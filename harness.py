@@ -3,6 +3,7 @@ import os
 sys.path.append(_dirname := os.path.dirname(__file__))
 sys.path.append(os.getenv('PYWIN32_CFFI'))
 
+from typing import Any
 import bindings.eci as eci
 from bindings.eci import ffi, lib
 import hashlib
@@ -17,7 +18,7 @@ for lang in langs:
 engine = eci.ECI(lib.eciGeneralAmericanEnglish)
 
 @ffi.callback('ECICallback')
-def callback(_engine, msg, param, _data):
+def callback(_engine: Any, msg: int, param: int, _data: Any):
     if msg == lib.eciWaveformBuffer:
         audio = audio_buf[0:param]
         with open('/tmp/audio.bin', 'wb') as f:

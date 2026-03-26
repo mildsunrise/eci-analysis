@@ -101,7 +101,7 @@ extern "C" {
 
 typedef struct _ECI* ECIHand;
 
-typedef const void* ECIInputText;
+typedef const char* ECIInputText;
 
 enum ECIParam {
 	eciSynthMode,
