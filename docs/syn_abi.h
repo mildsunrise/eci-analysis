@@ -164,7 +164,7 @@ struct Synth_vtable {
 	void (__stdcall *setCallbackParam)(SynthPtr _obj, SynthParamCb callback, void *cookie);
 
 	/** register an event ID at the current point in the stream (`SynthEventCb` will be dispatched with that ID once production has gotten to it) */
-	int (__stdcall *pushEvent)(SynthPtr _obj);
+	int (__stdcall *pushEvent)(SynthPtr _obj, int eventId);
 	/** like pushEvent but with a mysterious extra argument, which ECI passes as the last argument of `SynthPhonemeCb`, so it could be a {text, audio} position to register the event in, or an internal phoneme ID to associate the event with... assuming the former for now (FIXME) */
 	int (__stdcall *pushEventAt)(SynthPtr _obj, int eventId, int streamPosition);
 
