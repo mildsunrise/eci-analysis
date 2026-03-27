@@ -30,7 +30,7 @@ class CallbackProp[Ptr: _CDataBase, R, *P]:
 		self.setter_accessor = setter_accessor
 		def trampoline(*all_args: *tuple[*P, 'PointerBase[object]']) -> R:
 			*args, cookie = all_args
-			obj = cast(weakref.ref[Synth], ffi.from_handle(cookie))()
+			obj = cast('weakref.ref[Synth]', ffi.from_handle(cookie))()
 			assert obj, 'weakref is stale. this should never happen.'
 			return obj.__dict__[self.attr_name](*args)
 		self.trampoline = decorator(trampoline)

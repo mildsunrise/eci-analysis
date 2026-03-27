@@ -18,7 +18,7 @@ class ObjBase[Obj, VT]:
 		def __init__(self, accessor: Callable[[VT], Callable[[Obj, *P], R]]):
 			self.accessor = accessor
 		def __get__(self, _obj: 'ObjBase[Any, Any]', _objtype: type) -> Callable[[*P], R]:
-			obj = cast(ObjBase[Obj, VT], _obj)
+			obj = cast('ObjBase[Obj, VT]', _obj)
 			assert obj != None
 			fn = self.accessor(obj._vtable)
 			def wrapped(*args: *P):
