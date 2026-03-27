@@ -1,13 +1,14 @@
 import codecs
 from ._syn_cffi import ffi
+import weakref
 from . import _syn_intermediate as wrappers
 import os.path
 _dirname = os.path.dirname(__file__)
 ENGINE_PATH = os.path.join(_dirname, r'..\synthDrivers\eloquence')
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, cast
 if TYPE_CHECKING:
-	from ._syn_cffi import types
+	from ._syn_cffi import types, _CDataBase, PointerBase # pyright: ignore[reportPrivateUsage]
 
 __all__ = ['SynthEngine', 'Synth', 'SynthDict']
 
@@ -18,6 +19,38 @@ class SynthEngine:
 	def __init__(self, basename: str, engine_path: str=ENGINE_PATH):
 		self.lib = ffi.dlopen(os.path.join(engine_path, basename))
 
+class CallbackProp[Ptr: _CDataBase, R, *P]:
+	type CallbackSetter = Callable[[Ptr, 'PointerBase[object]'], None]
+	type StoredValue = Callable[[*P], R] | None
+
+	def __init__(self,
+		setter_accessor: Callable[[wrappers.Synth], CallbackSetter],
+		decorator: Callable[[ Callable[[*tuple[*P, 'PointerBase[object]']], R] ], Ptr],
+	):
+		self.setter_accessor = setter_accessor
+		def trampoline(*all_args: *tuple[*P, 'PointerBase[object]']) -> R:
+			*args, cookie = all_args
+			obj = cast(weakref.ref[Synth], ffi.from_handle(cookie))()
+			assert obj, 'weakref is stale. this should never happen.'
+			return obj.__dict__[self.attr_name](*args)
+		self.trampoline = decorator(trampoline)
+
+	def __set_name__(self, _owner: type['Synth'], name: str):
+		if hasattr(self, 'attr_name'):
+			assert self.attr_name == name
+		self.attr_name = name
+
+	def __get__(self, obj: 'Synth', objtype: type['Synth']) -> StoredValue:
+		return obj.__dict__.get(self.attr_name)
+
+	def __set__(self, obj: 'Synth', value: StoredValue):
+		prev = obj.__dict__.get(self.attr_name)
+		if prev and not value:
+			self.setter_accessor(obj.obj)(ffi.NULL, ffi.NULL)
+		obj.__dict__[self.attr_name] = value
+		if value and not prev:
+			self.setter_accessor(obj.obj)(self.trampoline, obj.cb_cookie)
+
 class Synth:
 	def __init__(self, engine: SynthEngine):
 		outPtr = ffi.new('struct Synth * *')
@@ -25,6 +58,7 @@ class Synth:
 		assert outPtr[0], f'failed to allocate engine'
 		self.obj = wrappers.Synth(outPtr[0])
 		self.engine = engine # keep alive
+		self.cb_cookie = ffi.new_handle(weakref.ref(self))
 
 		_check(self.obj.init())
 
@@ -67,6 +101,14 @@ class Synth:
 
 	def setWantWordIndices(self, value: bool):
 		self.obj.setWantWordIndices(value)
+
+	callbackAudio = CallbackProp(lambda obj: obj.setCallbackAudio, ffi.callback('SynthAudioCb'))
+	callbackTextIndex = CallbackProp(lambda obj: obj.setCallbackTextIndex, ffi.callback('SynthTextIndexCb'))
+	callbackEvent = CallbackProp(lambda obj: obj.setCallbackEvent, ffi.callback('SynthEventCb'))
+	callbackPhoneme = CallbackProp(lambda obj: obj.setCallbackPhoneme, ffi.callback('SynthPhonemeCb'))
+	callbackParam = CallbackProp(lambda obj: obj.setCallbackParam, ffi.callback('SynthParamCb'))
+	callbackWordIndex = CallbackProp(lambda obj: obj.setCallbackWordIndex, ffi.callback('SynthWordIndexCb'))
+	callbackUserIndex = CallbackProp(lambda obj: obj.setCallbackUserIndex, ffi.callback('SynthUserIndexCb'))
 
 	def deactivateDict(self):
 		self.obj.dictSetActive(ffi.NULL)
