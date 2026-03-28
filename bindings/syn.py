@@ -8,7 +8,7 @@ ENGINE_PATH = os.path.join(_dirname, r'..\synthDrivers\eloquence')
 
 from typing import TYPE_CHECKING, Callable, cast
 if TYPE_CHECKING:
-	from ._syn_cffi import types, _CDataBase, PointerBase # pyright: ignore[reportPrivateUsage]
+	from ._syn_cffi import types, FunctionCData, PointerBase
 
 __all__ = ['SynthEngine', 'Synth', 'SynthDict']
 
@@ -19,7 +19,7 @@ class SynthEngine:
 	def __init__(self, basename: str, engine_path: str=ENGINE_PATH):
 		self.lib = ffi.dlopen(os.path.join(engine_path, basename))
 
-class CallbackProp[Ptr: _CDataBase, R, *P]:
+class CallbackProp[Ptr: FunctionCData, R, *P]:
 	type CallbackSetter = Callable[[Ptr, 'PointerBase[object]'], None]
 	type StoredValue = Callable[[*P], R] | None
 
@@ -46,7 +46,7 @@ class CallbackProp[Ptr: _CDataBase, R, *P]:
 	def __set__(self, obj: 'Synth', value: StoredValue):
 		prev = obj.__dict__.get(self.attr_name)
 		if prev and not value:
-			self.setter_accessor(obj.obj)(ffi.NULL, ffi.NULL)
+			self.setter_accessor(obj.obj)(cast(Ptr, ffi.NULL), ffi.NULL)
 		obj.__dict__[self.attr_name] = value
 		if value and not prev:
 			self.setter_accessor(obj.obj)(self.trampoline, obj.cb_cookie)
