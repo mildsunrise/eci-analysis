@@ -14,24 +14,29 @@ __all__ = ['SynthEngine', 'Synth', 'SynthDict']
 def _check(x: int):
 	assert not x, f'unsuccessful: {x}'
 
+def _phonemeNameToStr(p: int):
+	return ffi.string(ffi.cast('char(*)[4]', ffi.new('unsigned int *', p))[0]).decode('latin-1')
+
 class SynthEngine:
 	def __init__(self, basename: str, engine_path: str=ENGINE_PATH):
 		self.lib = ffi.dlopen(os.path.join(engine_path, basename))
 
-class CallbackProp[Ptr: FunctionCData, R, *P]:
+class CallbackProp[Ptr: FunctionCData, R, *Pi, P: tuple[object, ...]]:
 	type CallbackSetter = Callable[[Ptr, 'PointerBase[object]'], int | None]
-	type StoredValue = Callable[[*P], R] | None
+	type StoredValue = Callable[[*tuple[*P]], R] | None
 
 	def __init__(self,
 		setter_accessor: Callable[[wrappers.Synth], CallbackSetter],
-		decorator: Callable[[ Callable[[*tuple[*P, 'PointerBase[object]']], R] ], Ptr],
+		decorator: Callable[[ Callable[[*tuple[*Pi, 'PointerBase[object]']], R] ], Ptr],
+		args_preprocess: Callable[[*Pi], P]
 	):
 		self.setter_accessor = setter_accessor
-		def trampoline(*all_args: *tuple[*P, 'PointerBase[object]']) -> R:
+		def trampoline(*all_args: *tuple[*Pi, 'PointerBase[object]']) -> R:
 			*args, cookie = all_args
 			obj = cast('weakref.ref[Synth]', ffi.from_handle(cookie))()
 			assert obj, 'weakref is stale. this should never happen.'
-			return obj.__dict__[self.attr_name](*args)
+			new_args = args_preprocess(*args) # type: ignore # typechecker bug?
+			return obj.__dict__[self.attr_name](*new_args)
 		self.trampoline = decorator(trampoline)
 
 	def __set_name__(self, _owner: type['Synth'], name: str):
@@ -74,16 +79,15 @@ class Synth:
 
 	def setFlushing(self, value: bool):
 		''' ECI sets this to false when switching to an engine (on the new engine) and toggles it momentarily as part of `eciStop` '''
-		_check(self.obj.setFlushing(value))
+		_check(self.obj.setFlushing(int(value)))
 
-	def prepare(self):
-		''' ECI calls this when switching to an engine (on the new engine) so presumably it resets some internal state or prepares for synthesis in some way? '''
-		_check(self.obj.prepare())
+	def resetParams(self):
+		_check(self.obj.resetParams())
 
-	def pushText(self, text: str | bytes | None, alt: bool = False):
+	def pushText(self, text: str | bytes | None, flush: bool = False):
 		_text = ffi.NULL if text == None else \
 			text.encode('latin-1') if isinstance(text, str) else text
-		_check((self.obj.pushText2 if alt else self.obj.pushText)(_text))
+		_check((self.obj.pushTextSync if flush else self.obj.pushText)(_text))
 
 	def pushEvent(self, id: int, at: int | None = None):
 		if at != None:
@@ -91,26 +95,29 @@ class Synth:
 		else:
 			_check(self.obj.pushEvent(id))
 
-	def readPhonemes(self, n: int = -1) -> bytes:
+	def readPhonemes(self, n: int = -1) -> str | None:
 		if n == -1:
-			raise NotImplementedError
+			bufs: list[str] = []
+			while (b := self.readPhonemes(256)) != None:
+				bufs.append(b)
+			return ''.join(bufs)
 		buf = ffi.new('char[]', n)
-		size = ffi.new('int *', n)
-		for i in range(n): buf[i] = b'\xFF'
-		_check(self.obj.readPhonemes(buf, n-1, size)) # FIXME: remove the -1
-		assert all(x == b'\xFF' for x in buf[size[0]:])
-		return ffi.string(buf[:size[0]])
+		size = ffi.new('int *')
+		_check(self.obj.readPhonemes(buf, n, size))
+		if not size[0]: return
+		assert 0 < size[0] <= n and not buf[size[0]-1][0]
+		return ffi.unpack(buf, size[0]-1).decode('latin-1')
 
 	def setWantWordIndices(self, value: bool):
 		self.obj.setWantWordIndices(value)
 
-	callbackAudio = CallbackProp(lambda obj: obj.setCallbackAudio, ffi.callback('SynthAudioCb'))
-	callbackTextIndex = CallbackProp(lambda obj: obj.setCallbackTextIndex, ffi.callback('SynthTextIndexCb'))
-	callbackEvent = CallbackProp(lambda obj: obj.setCallbackEvent, ffi.callback('SynthEventCb'))
-	callbackPhoneme = CallbackProp(lambda obj: obj.setCallbackPhoneme, ffi.callback('SynthPhonemeCb'))
-	callbackParam = CallbackProp(lambda obj: obj.setCallbackParam, ffi.callback('SynthParamCb'))
-	callbackWordIndex = CallbackProp(lambda obj: obj.setCallbackWordIndex, ffi.callback('SynthWordIndexCb'))
-	callbackUserIndex = CallbackProp(lambda obj: obj.setCallbackUserIndex, ffi.callback('SynthUserIndexCb'))
+	callbackAudio = CallbackProp(lambda obj: obj.setCallbackAudio, ffi.callback('SynthAudioCb'), lambda len, buf: (buf[0:len],))
+	callbackTextIndex = CallbackProp(lambda obj: obj.setCallbackTextIndex, ffi.callback('SynthTextIndexCb'), lambda idx: (idx,))
+	callbackEvent = CallbackProp(lambda obj: obj.setCallbackEvent, ffi.callback('SynthEventCb'), lambda ev: (ev,))
+	callbackPhoneme = CallbackProp(lambda obj: obj.setCallbackPhoneme, ffi.callback('SynthPhonemeCb'), lambda p, unk: (_phonemeNameToStr(p), unk))
+	callbackParam = CallbackProp(lambda obj: obj.setCallbackParam, ffi.callback('SynthParamCb'), lambda k, v: (k, v))
+	callbackWordIndex = CallbackProp(lambda obj: obj.setCallbackWordIndex, ffi.callback('SynthWordIndexCb'), lambda idx: (idx,))
+	callbackUserIndex = CallbackProp(lambda obj: obj.setCallbackUserIndex, ffi.callback('SynthUserIndexCb'), lambda: ())
 
 	def deactivateDict(self):
 		self.obj.dictSetActive(ffi.NULL)

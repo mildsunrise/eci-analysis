@@ -59,10 +59,10 @@ class Synth(_base := ObjBase['types.SynthPtr', 'types.struct_Synth_vtable']):
 	'''
 	.. code-block:: c
 		int pushText(char *); '''
-	pushText2 = _wrap(lambda vt: vt.pushText2)
+	pushTextSync = _wrap(lambda vt: vt.pushTextSync)
 	'''
 	.. code-block:: c
-		int pushText2(char *); '''
+		int pushTextSync(char *); '''
 	__method7 = _wrap(lambda vt: vt.__method7)
 	'''
 	.. code-block:: c
@@ -83,10 +83,10 @@ class Synth(_base := ObjBase['types.SynthPtr', 'types.struct_Synth_vtable']):
 	'''
 	.. code-block:: c
 		int setFlushing(_Bool); '''
-	prepare = _wrap(lambda vt: vt.prepare)
+	resetParams = _wrap(lambda vt: vt.resetParams)
 	'''
 	.. code-block:: c
-		int prepare(); '''
+		int resetParams(); '''
 	__method13 = _wrap(lambda vt: vt.__method13)
 	'''
 	.. code-block:: c

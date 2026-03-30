@@ -67,9 +67,9 @@ struct Synth {
 enum SynthParamId {
 	SynthParam_Global_TextMode, /** set via `` `ts `` [0..3] */
 	SynthParam_Global_NumberMode, /** set via `` `ty `` (boolean) */
-	SynthParam_Global2,
+	SynthParam_Global2, /** i believe synths will not actually use this, as it stores the LangDialect in ECI */
 	SynthParam_Global_DictionaryAbbr, /** set via `` `da `` (boolean) */
-	SynthParam_Global4,
+	SynthParam_Global_WantWordIndices, /** ECI stores here the value passed to `setWantWordIndices`, but i've never seen it actually passed to the callback */
 
 	SynthParam_Voice_Gender, /** set via `` `vg `` (boolean) (FIXME) */
 	SynthParam_Voice_HeadSize, /** set via `` `vh `` [0..64] */
@@ -89,22 +89,34 @@ enum SynthParamId {
 	SynthParam_Global19,
 };
 
+/** phoneme names are passed as 4-character NUL-padded latin-1 strings */
+union SynthPhonemeName {
+	unsigned int word;
+	char str [4];
+};
+// but cffi does not support composite types as callback parameters, so use unsigned int instead
+#ifdef _IS_CFFI
+typedef unsigned int SynthPhonemeName;
+#else
+typedef union SynthPhonemeName SynthPhonemeName;
+#endif
+
 /**
  * a chunk of output audio is available.
  * the engine keeps ownership of the passed buffer, which is no longer valid once the callback returns.
- * the audio is 16-bit signed mono, at the sample rate set up with the `` `sr `` annotation.
+ * the audio is 16-bit signed mono (the values are in the range of a 16-bit int even if they're 32-bit) at the sample rate set up with the `` `esr `` annotation.
  */
-typedef void (__cdecl *SynthAudioCb)(int nSamples, short *audiobuf, void *cookie);
+typedef void (__cdecl *SynthAudioCb)(int nSamples, int *samples, void *cookie);
 
 /**
- * informs you of the position in the text stream, e.g. amount of characters processed (note that an escaped character is 1 character, e.g. the `\` does not count).
- * ECI unsets this while calling `pushText2`.
+ * informs you of the position increment in the text stream, e.g. amount of characters processed since last callback dispatch.
+ * note that an escaped character is 1 character, e.g. the `\` does not count.
  */
 typedef void (__cdecl *SynthTextIndexCb)(int index, void *cookie);
 
 /**
  * audio production has reached an event registered with `pushEvent` or `pushEventAt`.
- * ECI usage seems to suggest that, unlike `SynthTextIndexCb`, `SynthUserIndexCb`, `SynthWordIndexCb` or `SynthPhonemeCb`, this callback is synchronized with `SynthAudioCb`. but it could be different semantics (FIXME)
+ * this callback appears NOT to be synchronized with `SynthAudioCb`, `SynthTextIndexCb`, `SynthUserIndexCb`, `SynthWordIndexCb` or `SynthPhonemeCb`?
  */
 typedef void (__cdecl *SynthEventCb)(int eventId, void *cookie);
 
@@ -112,7 +124,7 @@ typedef void (__cdecl *SynthEventCb)(int eventId, void *cookie);
  * a phoneme has been uttered. see `ECI.INI` for remarks on phoneme names.
  * FIXME: `streamPosition` could be some position in the text or audio, or it could be some sort of internal phoneme ID.
  */
-typedef void (__cdecl *SynthPhonemeCb)(char phonemeName [4], int streamPosition, void *cookie);
+typedef void (__cdecl *SynthPhonemeCb)(SynthPhonemeName phoneme, int streamPosition, void *cookie);
 
 /** an engine parameter has a new value; see SynthParamId. */
 typedef void (__cdecl *SynthParamCb)(enum SynthParamId param, int value, void *cookie);
@@ -120,10 +132,7 @@ typedef void (__cdecl *SynthParamCb)(enum SynthParamId param, int value, void *c
 /** informs you of the word position in the text stream, e.g. amount of words uttered. */
 typedef void (__cdecl *SynthWordIndexCb)(int index, void *cookie);
 
-/**
- * a `` `ui `` annotation has been reached.
- * ECI unsets this while calling `pushText2`.
- */
+/** a `` `ui `` annotation has been reached. */
 typedef void (__cdecl *SynthUserIndexCb)(void *cookie);
 
 
@@ -159,10 +168,17 @@ struct Synth_vtable {
 
 	void (__stdcall *__method4)(SynthPtr _obj);
 
-	/** push input text with annotations. unless the string ends with a space, one seems to be inserted implicitly (we know this because we see an extra char processed according to TextIndex, and because words are split across pushText boundaries). */
+	/**
+	 * push input text with annotations. unless the string ends with a space, one seems to be inserted implicitly (we know this because we see an extra char processed according to TextIndex, and because words are split across pushText boundaries).
+	 * in addition to the annotations explained in ECI documentation, some others have been seen:
+	 *   - `` `esr<N> `` sets sample rate (0 = 8kHz, 1 = 11kHz)
+	 *   - `` `espr<Bool> `` enables/disables phoneme generation (this includes both `SynthPhonemeCb` and annotated-form output that can be consumed with `readPhonemes`). Note that this annotation only has an effect if `setWantWordIndices` is set.
+	 *   - `` `einp<Bool> `` like `espr` but generates Pinyin phonemes instead? untested
+	 *   - `` `ui `` dispatches `SynthUserIndexCb`
+	 */
 	int (__stdcall *pushText)(SynthPtr _obj, const char *annotatedText);
-	/** like pushText, but this version seems to be used only for setting parameters, or called with NULL to 'flush' the synthesizer */
-	int (__stdcall *pushText2)(SynthPtr _obj, const char *annotatedText);
+	/** like `pushText`, but also flushes the synthesizer (dispatching all the phoneme, audio and index callbacks). NULL can be passed if just a flush is desired. */
+	int (__stdcall *pushTextSync)(SynthPtr _obj, const char *annotatedText);
 
 	void (__stdcall *__method7)(SynthPtr _obj);
 	void (__stdcall *__method8)(SynthPtr _obj);
@@ -170,16 +186,18 @@ struct Synth_vtable {
 	/**
 	 * reads output phonemes into a buffer.
 	 *
-	 * attempts to read up to `capacity` 8-bit characters into `buffer`, and if successful, places the amount of characters read in `outLength`. no NUL terminator is written (FIXME: verify this is the case, and not that it's written but not included in `capacity` and `outLength`).
+	 * attempts to read up to `capacity` 8-bit characters (including a terminating NUL) into `buffer`, and if successful, places the amount of characters read (including the NUL) in `outLength`.
+	 * if there are no remaining characters to read, the method still returns successful, but places 0 in `outLength` (even though the NUL is still written).
+	 * warning: if called while flushing, it returns successfully *without* setting `outLength` or writing anything.
 	 */
 	int (__stdcall *readPhonemes)(SynthPtr _obj, char *buffer, int capacity, int *outLength);
 
 	void (__stdcall *__method10)(SynthPtr _obj);
 
 	/** ECI sets this to false when switching to an engine (on the new engine, after calling `prepare`) and toggles it momentarily as part of `eciStop` */
-	int (__stdcall *setFlushing)(SynthPtr _obj, bool value);
-	/** ECI calls this when switching to an engine (on the new engine) after setting all the initial parameters and callbacks, so presumably it resets some internal state or prepares for synthesis in some way? */
-	int (__stdcall *prepare)(SynthPtr _obj);
+	int (__stdcall *setFlushing)(SynthPtr _obj, int value);
+	/** resets parameter state. seems to cover all parameters that can be set through annotations, even if they are not notified via `SynthParamCb`. ECI calls this when switching to an engine (on the new engine) after setting all the callbacks */
+	int (__stdcall *resetParams)(SynthPtr _obj);
 
 	void (__stdcall *__method13)(SynthPtr _obj);
 	void (__stdcall *__method14)(SynthPtr _obj);
@@ -200,7 +218,8 @@ struct Synth_vtable {
 	/** like pushEvent but with a mysterious extra argument, which ECI passes as the last argument of `SynthPhonemeCb`, so it could be a {text, audio} position to register the event in, or an internal phoneme ID to associate the event with... assuming the former for now (FIXME) */
 	int (__stdcall *pushEventAt)(SynthPtr _obj, int eventId, int streamPosition);
 
-	void (__stdcall *setWantWordIndices)(SynthPtr _obj, bool enabled);
+	/** presumably controls whether `SynthWordIndexCb` is dispatched */
+	void (__stdcall *setWantWordIndices)(SynthPtr _obj, int enabled);
 
 	/** called by ECI just before `destroy` (?) */
 	void (__stdcall *preDestruct)(SynthPtr _obj);
