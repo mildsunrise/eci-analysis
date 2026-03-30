@@ -1,4 +1,3 @@
-import codecs
 from ._syn_cffi import ffi
 import weakref
 from . import _syn_intermediate as wrappers
@@ -20,7 +19,7 @@ class SynthEngine:
 		self.lib = ffi.dlopen(os.path.join(engine_path, basename))
 
 class CallbackProp[Ptr: FunctionCData, R, *P]:
-	type CallbackSetter = Callable[[Ptr, 'PointerBase[object]'], None]
+	type CallbackSetter = Callable[[Ptr, 'PointerBase[object]'], int | None]
 	type StoredValue = Callable[[*P], R] | None
 
 	def __init__(self,
@@ -46,10 +45,12 @@ class CallbackProp[Ptr: FunctionCData, R, *P]:
 	def __set__(self, obj: 'Synth', value: StoredValue):
 		prev = obj.__dict__.get(self.attr_name)
 		if prev and not value:
-			self.setter_accessor(obj.obj)(cast(Ptr, ffi.NULL), ffi.NULL)
+			if (r := self.setter_accessor(obj.obj)(cast(Ptr, ffi.NULL), ffi.NULL)) != None:
+				_check(r)
 		obj.__dict__[self.attr_name] = value
 		if value and not prev:
-			self.setter_accessor(obj.obj)(self.trampoline, obj.cb_cookie)
+			if (r := self.setter_accessor(obj.obj)(self.trampoline, obj.cb_cookie)) != None:
+				_check(r)
 
 class Synth:
 	def __init__(self, engine: SynthEngine):
@@ -79,8 +80,9 @@ class Synth:
 		''' ECI calls this when switching to an engine (on the new engine) so presumably it resets some internal state or prepares for synthesis in some way? '''
 		_check(self.obj.prepare())
 
-	def pushText(self, text: str | bytes, alt: bool = False):
-		_text = text.encode('latin-1') if isinstance(text, str) else text
+	def pushText(self, text: str | bytes | None, alt: bool = False):
+		_text = ffi.NULL if text == None else \
+			text.encode('latin-1') if isinstance(text, str) else text
 		_check((self.obj.pushText2 if alt else self.obj.pushText)(_text))
 
 	def pushEvent(self, id: int, at: int | None = None):
@@ -138,12 +140,12 @@ class SynthDict:
 		@staticmethod
 		def _tostr(x: str | bytes) -> bytes:
 			if isinstance(x, str):
-				return codecs.encode(x, 'utf-8')
+				return x.encode('utf-8')
 			return x
 		@staticmethod
 		def _fromstr(x: 'types.SynthDictStr') -> str:
 			assert x
-			return codecs.decode(ffi.buffer(x), 'utf-8')
+			return ffi.string(x).decode('utf-8')
 
 		def __contains__(self, key: str | bytes) -> bool:
 			return bool(self.obj.lookup(self._tostr(key)))

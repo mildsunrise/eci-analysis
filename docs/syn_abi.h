@@ -58,6 +58,38 @@ struct Synth {
 // CALLBACKS
 
 /**
+ * identifies a parameter which changed in the synthesizer, see `SynthParamCb`.
+ * for more information about what the parameters mean, see the relevant
+ * annotation in ECI docs (`tts.pdf`). note that for some voice parameters
+ * (vb, vs, vv I think) ECI will rewrite the annotations with a units-converted
+ * value before handing them over to the synth engine.
+ */
+enum SynthParamId {
+	SynthParam_Global_TextMode, /** set via `` `ts `` [0..3] */
+	SynthParam_Global_NumberMode, /** set via `` `ty `` (boolean) */
+	SynthParam_Global2,
+	SynthParam_Global_DictionaryAbbr, /** set via `` `da `` (boolean) */
+	SynthParam_Global4,
+
+	SynthParam_Voice_Gender, /** set via `` `vg `` (boolean) (FIXME) */
+	SynthParam_Voice_HeadSize, /** set via `` `vh `` [0..64] */
+	SynthParam_Voice_PitchBaseline, /** set via `` `vb `` [0..64] */
+	SynthParam_Voice_PitchFluctuation, /** set via `` `vf `` [0..64] */
+	SynthParam_Voice_Roughness, /** set via `` `vr `` [0..64] */
+	SynthParam_Voice_Breathiness, /** set via `` `vy `` [0..64] */
+	SynthParam_Voice_Speed, /** set via `` `vs `` [0..250] */
+	SynthParam_Voice_Volume, /** set via `` `vv `` [0..64] */
+
+	SynthParam_Global_UnkEci11, /** set via `` `pp `` (boolean) */
+	SynthParam_Global14,
+	SynthParam_Global15,
+	SynthParam_Unk16,
+	SynthParam_Unk17,
+	SynthParam_Unk18,
+	SynthParam_Global19,
+};
+
+/**
  * a chunk of output audio is available.
  * the engine keeps ownership of the passed buffer, which is no longer valid once the callback returns.
  * the audio is 16-bit signed mono, at the sample rate set up with the `` `sr `` annotation.
@@ -122,14 +154,14 @@ struct Synth_vtable {
 
 	/** destroy and free the instance (no methods may be called after this) */
 	void (__stdcall *destroy)(SynthPtr _obj);
-	/** called before anything else */
+	/** called once before anything else */
 	int (__stdcall *init)(SynthPtr _obj);
 
 	void (__stdcall *__method4)(SynthPtr _obj);
 
 	/** push input text with annotations. unless the string ends with a space, one seems to be inserted implicitly (we know this because we see an extra char processed according to TextIndex, and because words are split across pushText boundaries). */
 	int (__stdcall *pushText)(SynthPtr _obj, const char *annotatedText);
-	/** like pushText, but this version seems to be used only for setting parameters */
+	/** like pushText, but this version seems to be used only for setting parameters, or called with NULL to 'flush' the synthesizer */
 	int (__stdcall *pushText2)(SynthPtr _obj, const char *annotatedText);
 
 	void (__stdcall *__method7)(SynthPtr _obj);
@@ -144,9 +176,9 @@ struct Synth_vtable {
 
 	void (__stdcall *__method10)(SynthPtr _obj);
 
-	/** ECI sets this to false when switching to an engine (on the new engine) and toggles it momentarily as part of `eciStop` */
+	/** ECI sets this to false when switching to an engine (on the new engine, after calling `prepare`) and toggles it momentarily as part of `eciStop` */
 	int (__stdcall *setFlushing)(SynthPtr _obj, bool value);
-	/** ECI calls this when switching to an engine (on the new engine) so presumably it resets some internal state or prepares for synthesis in some way? */
+	/** ECI calls this when switching to an engine (on the new engine) after setting all the initial parameters and callbacks, so presumably it resets some internal state or prepares for synthesis in some way? */
 	int (__stdcall *prepare)(SynthPtr _obj);
 
 	void (__stdcall *__method13)(SynthPtr _obj);

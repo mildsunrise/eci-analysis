@@ -566,6 +566,66 @@ class types:
         ) -> None: ...
 
 class Lib:
+    SynthParam_Global14: types.enum_SynthParamId = 14
+    ''' enum SynthParamId (value 14) '''
+
+    SynthParam_Global15: types.enum_SynthParamId = 15
+    ''' enum SynthParamId (value 15) '''
+
+    SynthParam_Global19: types.enum_SynthParamId = 19
+    ''' enum SynthParamId (value 19) '''
+
+    SynthParam_Global2: types.enum_SynthParamId = 2
+    ''' enum SynthParamId (value 2) '''
+
+    SynthParam_Global4: types.enum_SynthParamId = 4
+    ''' enum SynthParamId (value 4) '''
+
+    SynthParam_Global_DictionaryAbbr: types.enum_SynthParamId = 3
+    ''' enum SynthParamId (value 3) '''
+
+    SynthParam_Global_NumberMode: types.enum_SynthParamId = 1
+    ''' enum SynthParamId (value 1) '''
+
+    SynthParam_Global_TextMode: types.enum_SynthParamId = 0
+    ''' enum SynthParamId (value 0) '''
+
+    SynthParam_Global_UnkEci11: types.enum_SynthParamId = 13
+    ''' enum SynthParamId (value 13) '''
+
+    SynthParam_Unk16: types.enum_SynthParamId = 16
+    ''' enum SynthParamId (value 16) '''
+
+    SynthParam_Unk17: types.enum_SynthParamId = 17
+    ''' enum SynthParamId (value 17) '''
+
+    SynthParam_Unk18: types.enum_SynthParamId = 18
+    ''' enum SynthParamId (value 18) '''
+
+    SynthParam_Voice_Breathiness: types.enum_SynthParamId = 10
+    ''' enum SynthParamId (value 10) '''
+
+    SynthParam_Voice_Gender: types.enum_SynthParamId = 5
+    ''' enum SynthParamId (value 5) '''
+
+    SynthParam_Voice_HeadSize: types.enum_SynthParamId = 6
+    ''' enum SynthParamId (value 6) '''
+
+    SynthParam_Voice_PitchBaseline: types.enum_SynthParamId = 7
+    ''' enum SynthParamId (value 7) '''
+
+    SynthParam_Voice_PitchFluctuation: types.enum_SynthParamId = 8
+    ''' enum SynthParamId (value 8) '''
+
+    SynthParam_Voice_Roughness: types.enum_SynthParamId = 9
+    ''' enum SynthParamId (value 9) '''
+
+    SynthParam_Voice_Speed: types.enum_SynthParamId = 11
+    ''' enum SynthParamId (value 11) '''
+
+    SynthParam_Voice_Volume: types.enum_SynthParamId = 12
+    ''' enum SynthParamId (value 12) '''
+
     dictAbbv: types.enum_SynthDictVolume = 2
     ''' enum SynthDictVolume (value 2) '''
 
